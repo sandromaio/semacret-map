@@ -99,8 +99,9 @@ View Link
             markerGroup.addLayer(marker);
         }
     }
-    // map.fitBounds(bounds, { maxZoom: 3 });
-    // setTimeout(() => map.invalidateSize(), 1);
+    // if (bounds.length > 0) {
+    //     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
+    // }
 };
 
 
@@ -158,7 +159,7 @@ function setIcon(p) {
         case 'very large':
             sizeData *= 3;
             break;
-            default:
+        default:
             sizeData *= 2.5;
             logo = 'circle';
     }
