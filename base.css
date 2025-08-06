@@ -90,7 +90,7 @@ body {
 
 #fullscreen-btn {
     position: fixed;
-    bottom: 25px;
+    top: 65px;
     right: 15px;
     z-index: 1000;
     padding: 8px 12px;
@@ -103,7 +103,12 @@ body {
     content: "Exit ";
 }
 
+.fullscreen-map #fullscreen-btn {
+    top:25px;
+}
+
 @media(max-width: 1000px) {
+    
     .left {
         width: 25%;
     }
@@ -117,7 +122,9 @@ body {
 /* Stack on small screens */
 @media (max-width: 768px) {
 
-
+    #fullscreen-btn {
+        top: 55px;
+    }
     .container {
         flex-direction: column;
     }
@@ -133,5 +140,13 @@ body {
         margin: 0px;
         width: 100%;
         height: 100%;
+    }
+}
+
+/* Stack on small screens */
+@media (max-width: 688px) {
+
+    #fullscreen-btn {
+        top: 80px;
     }
 }
