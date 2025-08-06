@@ -1,0 +1,137 @@
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+}
+
+.header {
+    text-align: center;
+}
+
+.tooltip {
+    display: none;
+    position: absolute;
+    background: #333;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    max-width: 200px;
+    z-index: 10;
+}
+
+.filter-header:hover .tooltip {
+    display: block;
+}
+
+.header-title {
+    font-weight: bold;
+    font-size: x-large;
+}
+
+.header-disclaimer {
+    font-size: small;
+    margin-top: 4px;
+
+    span {
+        cursor: pointer;
+        color: #007BFF;
+        /* blue to look clickable */
+        text-decoration: underline;
+
+    }
+}
+
+
+
+.container {
+    display: flex;
+    height: 100%;
+
+}
+
+.left {
+    margin: 10px;
+    width: 20%;
+    /* text-align: center; */
+    overflow-y: auto;
+}
+
+.right {
+    margin: 10px;
+    width: 80%;
+    text-align: center;
+}
+
+.right #map {
+    width: 100%;
+    height: 100%;
+}
+
+.filter-header {
+    font-weight: bold;
+    margin: 10px 0px 5px 0px;
+}
+
+.fullscreen-map .header {
+    display: none !important;
+}
+
+.fullscreen-map .left {
+    display: none !important;
+}
+
+.fullscreen-map .right {
+    width: 100% !important;
+}
+
+
+#fullscreen-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 15px;
+    z-index: 1000;
+    padding: 8px 12px;
+    background: white;
+    border: 1px solid #ccc;
+    cursor: pointer;
+}
+
+.fullscreen-map #fullscreen-btn::before {
+    content: "Exit ";
+}
+
+@media(max-width: 1000px) {
+    .left {
+        width: 25%;
+    }
+
+    .right {
+        width: 75%;
+    }
+
+}
+
+/* Stack on small screens */
+@media (max-width: 768px) {
+
+
+    .container {
+        flex-direction: column;
+    }
+
+
+    .left {
+        margin: 0px;
+        width: 100%;
+        display: none;
+    }
+
+    .right {
+        margin: 0px;
+        width: 100%;
+        height: 100%;
+    }
+}

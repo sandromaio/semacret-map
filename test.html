@@ -1,0 +1,779 @@
+<!-- <!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+        }
+
+        .tooltip {
+            display: none;
+            position: absolute;
+            background: #333;
+            color: #fff;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 200px;
+            z-index: 10;
+        }
+
+        .filter-header:hover .tooltip {
+            display: block;
+        }
+
+        .header-title {
+            font-weight: bold;
+            font-size: x-large;
+        }
+
+        .header-disclaimer {
+            font-size: small;
+            margin-top: 4px;
+
+            span {
+                cursor: pointer;
+                color: #007BFF;
+                /* blue to look clickable */
+                text-decoration: underline;
+
+            }
+        }
+
+
+
+        .container {
+            display: flex;
+            height: 100%;
+
+        }
+
+        .left {
+            margin: 10px;
+            width: 20%;
+            /* text-align: center; */
+            overflow-y: auto;
+        }
+
+        .right {
+            margin: 10px;
+            width: 80%;
+            text-align: center;
+        }
+
+        .right #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .filter-header {
+            font-weight: bold;
+            margin: 10px 0px 5px 0px;
+        }
+
+        .fullscreen-map .header {
+            display: none !important;
+        }
+
+        .fullscreen-map .left {
+            display: none !important;
+        }
+
+        .fullscreen-map .right {
+            width: 100% !important;
+        }
+
+
+        #fullscreen-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 15px;
+            z-index: 1000;
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #ccc;
+            cursor: pointer;
+        }
+
+        .fullscreen-map #fullscreen-btn::before {
+            content: "Exit ";
+        }
+
+        @media(max-width: 1000px) {
+            .left {
+                width: 25%;
+            }
+
+            .right {
+                width: 75%;
+            }
+
+        }
+
+        /* Stack on small screens */
+        @media (max-width: 768px) {
+
+
+            .container {
+                flex-direction: column;
+            }
+
+
+            .left {
+                margin: 0px;
+                width: 100%;
+                display: none;
+            }
+
+            .right {
+                margin: 0px;
+                width: 100%;
+                height: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-title">Mineral Resources Mapping of Orthomagmatic Deposits in Europe</div>
+        <div class="header-disclaimer">
+            <span class="infoButton">Disclaimer</span>
+            |
+            <span class="terminologyButton">Terminology</span>
+        </div>
+    </div>
+    <div class="container">
+        <div class="left">
+            <div id="filter-selections">
+                <div class="filter-header" for="occurence">Occurrence type</div>
+                <div id="occurence"></div>
+                <!-- <div class="filter-header">Countries</div>
+                <div id="countries"></div> -->
+                <div class="filter-header" for="mineralization">Mineralization</div>
+                <div id="mineralization"></div>
+                <div class="filter-header" for="classification">Classification</div>
+                <div id="classification"></div>
+                <div class="filter-header" for="importance">Importance</div>
+                <div id="importance"></div>
+                <div class="filter-header" for="INSPIREMine">INSPIRE Mine Status</div>
+                <div id="INSPIREMine"></div>
+            </div>
+        </div>
+
+        <div class="right">
+            <button id="fullscreen-btn">Full Screen</button>
+            <div id="map"></div>
+        </div>
+    </div>
+    <script>
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            document.body.classList.toggle('fullscreen-map');
+            setTimeout(() => map.invalidateSize(), 300); // force map to resize
+        });
+
+        document.querySelector('div.header-disclaimer span.infoButton').addEventListener("click", () => { openModal("Mineral resources mapping of orthomagmatic deposits in Europe – Map viewer", document.getElementById("mapDescription").innerHTML) })
+        document.querySelector('div.header-disclaimer span.terminologyButton').addEventListener("click", () => { openModal("TERMINOLOGY (Mineral deposit passport – SEMACRET Map viewer)", document.getElementById("mapTerminology").innerHTML) })
+
+        locations = [];
+        map = null;
+        markerGroup = null;
+
+        (() => {
+            fetch('./index-maps-v2.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    locations = data.features;
+                    setFilter();
+                    setMap(locations);
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    // document.getElementById('output').textContent = 'Error loading data.';
+                });
+        })();
+        var markers = []
+        function setMap(filterLocations) {
+            if (map) {
+                bound = [];
+                markerGroup.clearLayers();
+            } else {
+                map = L.map('map').setView([65, -20], 3);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12, minZoom: 3 }).addTo(map);
+                map.attributionControl.remove();
+                markerGroup = L.layerGroup().addTo(map);
+                map.on('zoomend', function () {
+                    let currentZoom = map.getZoom();
+                    scaleIcon(currentZoom);
+                });
+            }
+
+            var bounds = [];
+            markers = [];
+
+            for (let location of filterLocations) {
+
+                if (location.geometry?.coordinates?.length == 2) {
+                    const geo = location.geometry?.coordinates;
+                    const marker = L.marker([geo[1], geo[0]], { icon: setIcon(location.properties) }).addTo(map)
+                        .bindPopup(
+                            `
+                    <div style="
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  background-color: #ffffff;
+  width: 420px;
+  font-size: 14px;
+  color: #333;
+  line-height: 1.6;
+">
+  <div><strong>Occurrence ID:</strong> ${location.properties.OCCURRENCE_ID?.replace('Null', '---')}</div>
+  <div><strong>Occurrence name:</strong> ${location.properties.OCCURRENCE_NAME?.replace('Null', '---')}</div>
+  <div><strong>Country:</strong> ${location.properties.COUNTRY?.replace('Null', '---')}</div>
+  <div><strong>Occurrence type:</strong> ${location.properties.OCCURRENCE_TYPE?.replace('Null', '---')}</div>
+  <div><strong>Mineralization type:</strong> ${location.properties.MINERALIZATION_TYPE?.replace('Null', '---')}</div>
+  <div><strong>Importance:</strong> ${location.properties.IMPORTANCE?.replace('Null', '---')}</div>
+  <div><strong>Classification method:</strong> ${location.properties.CLASSIFICATIONMETHOD?.replace('Null', '---')}</div>
+  <div><strong>Estimation date:</strong> ${location.properties.ESTIMATIONDATE?.replace('Null', '---')}</div>
+  <div><strong>Total ORE (T):</strong> ${location.properties.TOTAL_ORE_T?.replace('Null', '---')}</div>
+  <div><strong>Best UNFC class:</strong> ${location.properties.BEST_UNFC_CLASS?.replace('Null', '---')}</div>
+  <div><strong>Best UNFC amount:</strong> ${location.properties.BEST_UNFC_AM?.replace('Null', '---')}</div>
+  <div><strong>Additional UNFC classes:</strong> ${location.properties.ADDITIONA_UNFC_CLASSES?.replace('Null', '---')}</div>
+  <div><strong>Inspire mine status:</strong> ${location.properties.INSPIRE_MINE_STATUS?.replace('Null', '---')}</div>
+  <div><strong>Passport URL:</strong>
+    <a href="${location.properties.PASSPORT_URL?.replace('Null', '---')}" target="_blank" style="color: #007bff; text-decoration: none;">
+      View Link
+    </a>
+  </div>
+</div>
+
+                        `, { maxWidth: 'auto' });
+                    bounds.push([geo[1], geo[0]]);
+                    markers.push(marker);
+                    markerGroup.addLayer(marker);
+                }
+            }
+            // map.fitBounds(bounds, { maxZoom: 3 });
+            // setTimeout(() => map.invalidateSize(), 1);
+        };
+
+        function scaleIcon(zoom) {
+            debugger
+            for (marker of markers) {
+
+                let newSize = 40 * zoom; // scale relative to zoom 13
+                marker.setIcon(
+                    L.icon({
+                        iconUrl: './icons/shape_green.svg',
+                        iconSize: newSize,
+                        iconAnchor: [newSize / 2, newSize * 0.7],  // tweak here
+                        popupAnchor: [0, -newSize * 0.2],          // tweak here
+                    })
+                );
+            }
+        }
+
+        function setIcon(p) {
+
+            var color = '', logo = 'shape', size;
+            switch (p.MINERALIZATION_TYPE) {
+                case '(Fe)Ti-V':
+                    color = 'grey';
+                    break;
+                case 'Cr (PGE)':
+                    color = 'blue';
+                    break;
+                case 'Ni-Cu (Co, PGE, Cr)':
+                    color = 'orange';
+                    break;
+                case 'PGE (Au, Ag, Cu, Cr, Ni)':
+                    color = 'green';
+                    break;
+            }
+
+            var sizeRaw = p.IMPORTANCE.replace(/\s*\(.*?\)/, '').trim().toLowerCase();
+
+
+            switch (sizeRaw) {
+                case 'small':
+                    size = [20, 20]; // slightly bigger than 8x8 for visibility
+                    break;
+                case 'medium':
+                    size = [30, 30];
+                    break;
+                case 'large':
+                    size = [80, 80];
+                    break;
+                case 'very large':
+                    size = [100, 100];
+                    break;
+                default:
+                    logo = 'circle';
+                    size = [30, 30];
+            }
+
+            if (color === 'green' && logo === 'shape') {
+                size = [size[0] - 10, size[1] - 10]
+            }
+
+            // Dynamically calculate anchor positions
+            const iconAnchor = [size[0] / 2, size[1]]; // bottom center of icon
+            const popupAnchor = [0, -size[1]];         // directly above the icon
+
+            // return L.icon({
+            //     iconUrl: `icons/${logo}_${color}.svg`,
+            //     iconSize: size,
+            //     iconAnchor,
+            //     popupAnchor
+            // });
+
+
+            return L.icon({
+                iconUrl: `./icons/${logo}_${color}.svg`,
+                iconSize: size,
+                iconAnchor: [size[0] / 2, size[1] * 0.7],  // tweak here
+                popupAnchor: [0, -size[1] * 0.2],          // tweak here
+            });
+        }
+
+        function setFilter() {
+            const occurenceSet = new Set();
+            const countriesSet = new Set();
+            const mineralizationSet = new Set();
+            const importanceSet = new Set();
+            const inspiremineSet = new Set();
+            const classificationSet = new Set();
+            for (var location of locations) {
+                occurenceSet.add(location.properties.OCCURRENCE_TYPE);
+                countriesSet.add(location.properties.COUNTRY);
+                mineralizationSet.add(location.properties.MINERALIZATION_TYPE);
+                importanceSet.add(location.properties.IMPORTANCE);
+                inspiremineSet.add(location.properties.INSPIRE_MINE_STATUS);
+                classificationSet.add(location.properties.CLASSIFICATIONMETHOD);
+            }
+            /*
+                "OCCURRENCE_ID": "SEM-1ES101",
+                "OCCURRENCE_NAME": "Aguablanca",
+                "COUNTRY": "Spain",
+                "OCCURRENCE_TYPE": "Deposit",
+                "MINERALIZATION_TYPE": "Ni-Cu (Co, PGE, Cr)",
+                "IMPORTANCE": "Medium (C)",
+                "CLASSIFICATIONMETHOD": "CRIRSCO-compliant",
+                "ESTIMATIONDATE": "24/03/2024",
+                "TOTAL_ORE_T": "5325000,0",
+                "BEST_UNFC_CLASS": "Null",
+                "BEST_UNFC_AM": "26 716,8 t Ni; 24 288 t Cu; 809,6 t Co; 1,17 t Pd and 1,38 t Pt",
+                "ADDITIONA_UNFC_CLASSES": "Null",
+                "INSPIRE_MINE_STATUS": "Under development",
+                "PASSPORT_URL": "https://app.geology.cz/semacret/pdf.php?id=SEM-1ES101_Aguablanca"
+            */
+
+            for (const o of sortArrayAndSimplify(occurenceSet)) {
+                setCheckBox('occurence', o);
+            }
+
+            // const sortedCountries = [...countriesSet].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+            // for (const o of sortedCountries) {
+            //     setCheckBox('countries', o);
+            // }
+
+            for (const o of sortArrayAndSimplify(mineralizationSet)) {
+                setCheckBox('mineralization', o);
+            }
+
+
+            for (const o of sortArrayAndSimplify(classificationSet)) {
+                setCheckBox('classification', o);
+            }
+
+            for (const o of sortArrayAndSimplify(importanceSet, true, ["Very large", "Large", "Medium", "Small", "Not specified"])) {
+                setCheckBox('importance', o);
+            }
+
+            for (const o of sortArrayAndSimplify(inspiremineSet, false, ["Operating", "Under development", "Not operating", "---"])) {
+                setCheckBox('INSPIREMine', o);
+            }
+
+            document
+                .getElementById('filter-selections')
+                .addEventListener('change', function (event) {
+                    if (event.target.type === 'checkbox') applyFilter();
+                });
+        }
+
+        function sortArrayAndSimplify(originalSet, removeParentesis, sortOrder) {
+            var uniqueItems = new Set();
+            for (const entry of originalSet) {
+                const items = entry ? entry.split(";") : []; // split by semicolon
+                for (const item of items) {
+                    if (removeParentesis) {
+                        uniqueItems.add(item.replace(/\s*\(.*?\)/, '').trim());
+
+                    } else {
+                        uniqueItems.add(item.trim()); // trim whitespace and add
+                    }
+                }
+            }
+
+            var cleanResponse = [...uniqueItems].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+
+            return sortOrder ? orderedClassifications = cleanResponse.sort((a, b) => {
+                const indexA = sortOrder.indexOf(a) !== -1 ? sortOrder.indexOf(a) : sortOrder.length;
+                const indexB = sortOrder.indexOf(b) !== -1 ? sortOrder.indexOf(b) : sortOrder.length;
+                return indexA - indexB;
+            }) : cleanResponse;
+        }
+
+        function setCheckBox(wrapperId, text) {
+            const container = document.getElementById(wrapperId);
+
+            const wrapper = document.createElement('div');
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = text;
+
+            wrapper.appendChild(label);
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode((!text || text.toLowerCase().trim()) == 'null' ? ' ---' : text));
+
+            container.appendChild(wrapper);
+        }
+
+        function applyFilter() {
+            var tmpLocations = locations;
+            const selectedOcurrences = Array.from(document.querySelectorAll('#occurence input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedOcurrences.length > 0 ? tmpLocations.filter(l => selectedOcurrences.some(_ => l.properties.OCCURRENCE_TYPE.indexOf(_) != -1)) : tmpLocations;
+
+            const selectedCountries = Array.from(document.querySelectorAll('#countries input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedCountries.length > 0 ? tmpLocations.filter(l => selectedCountries.some(_ => l.properties.COUNTRY.indexOf(_) != -1)) : tmpLocations;
+
+            const selectedClassification = Array.from(document.querySelectorAll('#classification input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedClassification.length > 0 ? tmpLocations.filter(l => selectedClassification.some(_ => l.properties.CLASSIFICATIONMETHOD.indexOf(_) != -1)) : tmpLocations;
+
+            const selectedMineralization = Array.from(document.querySelectorAll('#mineralization input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedMineralization.length > 0 ? tmpLocations.filter(l => selectedMineralization.some(_ => l.properties.MINERALIZATION_TYPE.indexOf(_) != -1)) : tmpLocations;
+
+            const selectedImportance = Array.from(document.querySelectorAll('#importance input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedImportance.length > 0 ? tmpLocations.filter(l => selectedImportance.some(_ => l.properties.IMPORTANCE.indexOf(_) != -1)) : tmpLocations;
+
+            const selectedInspire = Array.from(document.querySelectorAll('#INSPIREMine input[type=checkbox]:checked')).map(cb => cb.value);
+            tmpLocations = selectedInspire.length > 0 ? tmpLocations.filter(l => selectedInspire.some(_ => l.properties.INSPIRE_MINE_STATUS.indexOf(_) != -1)) : tmpLocations;
+
+            setClear('occurence');
+            setClear('mineralization');
+            setClear('classification');
+            setClear('importance');
+            setClear('INSPIREMine');
+
+            setMap(tmpLocations);
+        }
+
+        function setClear(id) {
+            const selected = Array.from(document.querySelectorAll(`#${id} input[type=checkbox]:checked`)).map(cb => cb.value);
+
+            if (selected.length > 0) {
+                if (document.querySelector(`div[for=${id}] span.clear-btn`)) return;
+
+                const clearBtn = document.createElement('span');
+                clearBtn.textContent = 'Clear ×';
+                clearBtn.className = 'clear-btn';
+                clearBtn.style.cssText = 'margin-left:10px; color:#007bff; cursor:pointer; font-size:0.9em;';
+                clearBtn.onclick = () => {
+                    var list = document.querySelectorAll(`#${id} input[type=checkbox]:checked`)
+                    for (var l of list) {
+                        l.checked = false;
+                    }
+                    removeClear(id);
+                    applyFilter();
+                };
+                document.querySelector(`div[for=${id}]`).appendChild(clearBtn);
+            } else {
+                removeClear(id);
+            }
+
+        }
+        function removeClear(id) {
+            var clear = document.querySelector(`div[for=${id}] span.clear-btn`);
+            if (clear) {
+                clear.remove();
+            }
+        }
+    </script>
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Modal Title</h2>
+                <span class="modal-close" id="modalClose">&times;</span>
+            </div>
+            <div class="modal-body" id="modalText">
+                <!-- Your dynamic text content goes here -->
+            </div>
+        </div>
+    </div>
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 6px;
+            width: 80%;
+            max-height: 70%;
+            overflow: auto;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        .modal-header {
+            position: sticky;
+            top: 0;
+            background-color: #fff;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+            z-index: 10;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-close:hover {
+            color: #000;
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #007BFF;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+
+        .download-btn:hover {
+            background: #0056b3;
+        }
+    </style>
+    <script>
+        const modal = document.getElementById("modal");
+        const modalTitle = document.getElementById("modalTitle");
+        const modalText = document.getElementById("modalText");
+        const modalClose = document.getElementById("modalClose");
+
+        function openModal(title, text) {
+            modalTitle.innerText = title;
+            modalText.innerHTML = text;
+            modal.style.display = "block";
+
+            // Reset scroll to top
+            const modalContent = modal.querySelector('.modal-content');
+            if (modalContent) {
+                modalContent.scrollTop = 0;
+            }
+        }
+
+        // Close modal when clicking the close button
+        modalClose.onclick = () => {
+            modal.style.display = 'none';
+        }
+
+        // Close modal when clicking outside modal content
+        window.onclick = (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                modal.style.display = 'none';
+            }
+        });
+
+    </script>
+
+    <div style="display: none">
+        <div id="mapDescription">
+            <div style="text-align: justify;">
+                <p>
+                    This map viewer presents the results of the resource mapping of orthomagmatic mineral deposits in
+                    Europe.
+                    This task was part of the Work Package 5 of the SEMACRET project. Data were systematically
+                    collected,
+                    reviewed, complemented and evaluated between November 2023 and February 2025. As the source of
+                    information
+                    were used existing national and EU databases as were as other additional literature (articles, press
+                    releases, reports, etc.). It covers EU and associated European countries (Norway, South Balkan
+                    countries) as
+                    well Greenland, associated with the EU thorough Denmark as overseas territory which recently signed
+                    strategic partnership on sustainable raw materials value chains with the EU.
+                </p>
+                <p>The map shows different types of mineralizations associated with orthomagmatic mafic-ultramafic
+                    mineral systems:</p>
+                <ul>
+                    <li>Sulphide Ni-Cu dominated mineralization with possible Co, Cr and/or PGE by-products</li>
+                    <li>Oxide (Fe)-Ti-V mineralizations (with Ti/V rich magnetite, rutile or ilmenites)</li>
+                    <li>Chrome ores</li>
+                    <li>PGE dominated (reef type) mineralizations that might be associated with other precious and base
+                        metals (Au, Ag, Cu, Ni)</li>
+                </ul>
+                <p> The database that has been created to this purpose contains basic information, localization with
+                    coordinates, characterization of occurrence type, resource quantities (if available), including
+                    UNFC<sup>1</sup>. In addition to the basic information, for majority of points is available a link
+                    to
+                    passport
+                    with more detailed information.</p>
+
+                <p>The map viewer allows to filter data by different attributes, such as occurrence type (deposit,
+                    prospect, occurrence), mine status (operating, under development, not operating) or importance (very
+                    large, large, medium, small) which are based on INSPIRE Mineral Resources Theme
+                    definitions<sup>2</sup> .
+                    Other
+                    filter options are by mineralization type or by classification method applied for the resource
+                    estimate.</p>
+
+                <p>To learn more about the specific definitions applied in the map viewer and the passports see the
+                    <u>Terminology</u>.
+                </p>
+                <p>If you have further questions or comments, please use the SEMACRET <u>Contact form</u>, or contact
+                    directly to: <u><a href="blazena.wertichova@geology.cz">blazena.wertichova@geology.cz</a></u></p>
+                <p><b><i>Disclaimer:</i></b></p>
+                <p><i>Information provided in the Map viewer and respective Mineral deposit passports are based on the
+                        literature review at the time of data collection. The purpose of the Map viewer is to illustrate
+                        general mineral potential of selected deposit type in the EU and associated countries. It is not
+                        aimed to be neither an inventory nor any kind of qualified assessment, advice or official
+                        statement. Authors are not responsible for the use which might be made of this application. It
+                        is recommended to verify an up to date information of respective objects from reliable
+                        sources.</i></p>
+
+
+                <div style="border-top: 3px solid #bbb;">
+
+                    <p>1 -For the UNFC, the United Nations Framework Classification Update 2019 and related guidances
+                        and
+                        documents has been applied. For further information see:
+                        <a href="https://unece.org/sustainable-energy/publications/united-nations-framework-classification-resources-update-2019-ece"
+                            target="_blank">https://unece.org/sustainable-energy/publications/united-nations-framework-classification-resources-update-2019-ece</a>
+                    </p>
+                    <p>2 - For CRIRSCO-compliant resource estimates, respective UNFC class is not displayed <br><a
+                            href="https://knowledge-base.inspire.ec.europa.eu/publications/inspire-data-specification-mineral-resources-technical-guidelines_en"
+                            target="_blank">https://knowledge-base.inspire.ec.europa.eu/publications/inspire-data-specification-mineral-resources-technical-guidelines_en</a>
+                    </p>
+                </div>
+
+                <div style="text-align: center; margin-top: 20px;">
+                    <a href="./files/SEMACRET_Mapviewer_shortTerminology_template.docx" download class="download-btn">
+                        <!-- SVG Download Icon -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="white" viewBox="0 0 24 24">
+                            <path d="M12 16l4-5h-3V4h-2v7H8l4 5zm-8 2v2h16v-2H4z" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div id="mapTerminology">
+            <p><b>Occurrence ID</b> – unique identifier of each mineral occurrence in the database</p>
+            <p><b>Occurrence name</b> – name or names under which the occurrence or deposit is
+                known/registered in other databases or literature</p>
+            <p><b>Country</b> 1 – name of the country, where the occurrence is placed</p>
+            <p><b>Occurrence type</b> – based on INSPIRE Mineral Occurrence Type 2 with corresponding
+                definitions of occurrence, prospect and mineral deposit in relation to the level of knowledge
+                and economic potential</p>
+            <p><b>Mineralization type</b> – usual association of valuable elements (metals) in this type of
+                mineralization (mentioned elements are not necessarilly present in this occurrence)</p>
+            <p><b>Importance</b> – Importance of the deposit based on INSPIRE Importance Value (European
+                Commission, 2024). Express the classification of deposit size of the deposit according to the
+                commodity quantity. Class boundaries are based on a statistical study of a large set of
+                deposits throughout the world and defines what is a very large, a large, a medium-sized etc.
+                deposit for this commodity.</p>
+            <p><b>Classification method</b> – classification method applied in the most recent resource estimate
+                 CRIRSCO-compliant – resource estimate applies classification in line with CRIRSCO - family
+                reporting standard. The current holder is the one who has issued or confirmed the estimate,
+                thus it is considered CRIRSCO-compliant.
+                 Historic CRIRSCO – resources have been classified according to the CRIRSCO-family standard,
+                however, the company has left the tenement or there has been an ownership change
+                without amending the resource estimate. Such estimates are usually referred as historic or
+                foreign and are not considered CRIRSCO-compliant sensu stricto.
+                 Non-compliant/historic – the resource estimate is not in line with any CRIRSCO-family
+                reporting standard and related classification. The classification might be in line with some
+                national standard, or it is a historic/not standardized classification
+                 No resource estimate – the resource estimate does not exist (is not known).
+            </p>
+            <p><b>Estimation date</b> – date of the issue of the estimate. In the case of CRIRSCO-compliant
+                estimates, the Effective date is provided. In the case that only year is known, the date 31.12.
+                + year is used.</p>
+            <p><b>Total ore (t)</b> – total tonnage of all resource and reserves categories, based on the most
+                recent available estimate (the last estimate for which the tonnages and grades has been
+                available, based on the literature).</p>
+            <p><b>Best UNFC class</b> - the UNFC class that best represents the Project development status and
+                overall confidence in the resource estimate. For CRIRSCO-compliant resource estimates, the
+                UNFC class is not displayed.</p>
+            <p><b>Best UNFC amount</b> – Proportion of commodity quantities, that corresponds to the Best
+                UNFC class.</p>
+            <p><b>Additional UNFC class + Additional quantities</b> - The project itself may contain additional
+                commodity quantities with different UNFC classes.</p>
+            <p><b>INSPIRE Mine Status</b> – status of the mine development based on INSPIRE Mine Status 3 with
+                corresponding definitions of operating, under development, not operating</p>
+            <p>If you have further questions or comments, please use the SEMACRET Contact form, or
+                contact directly to: <u>blazena.wertichova@geology.cz</u></p>
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="./files/SEMACRET_Mapviewer_shortTerminology_template.docx" download class="download-btn">
+                    <!-- SVG Download Icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="white" viewBox="0 0 24 24">
+                        <path d="M12 16l4-5h-3V4h-2v7H8l4 5zm-8 2v2h16v-2H4z" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html> -->
