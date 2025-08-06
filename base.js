@@ -99,9 +99,10 @@ View Link
             markerGroup.addLayer(marker);
         }
     }
-    // if (bounds.length > 0) {
-    //     map.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
-    // }
+    
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
+    }
 };
 
 
